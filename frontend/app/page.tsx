@@ -5,10 +5,18 @@ import { Search, Mic, Camera, X, Grid3x3 } from "lucide-react";
 
 export default function Home() {
   const [query, setQuery] = useState("");
+  const [capturedQuery, setCapturedQuery] = useState<string | null>(null);
+
+  const handleSearch = (searchQuery: string) => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    setCapturedQuery(trimmed);
+    console.log("Captured search query:", trimmed);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Search functionality will be implemented in the next step
+    handleSearch(query);
   };
 
   return (
@@ -152,11 +160,28 @@ export default function Home() {
             <button
               type="button"
               id="lucky-button"
+              onClick={() => handleSearch(query)}
               className="h-9 px-4 text-sm text-[#3c4043] bg-[#f8f9fa] border border-[#f8f9fa] hover:border-[#dadce0] hover:text-[#202124] hover:shadow-[0_1px_1px_rgba(0,0,0,0.1)] active:border-[#4285f4] rounded cursor-pointer transition-all duration-150"
             >
               I&apos;m Feeling Lucky
             </button>
           </div>
+
+          {/* Captured Query Verification Badge */}
+          {capturedQuery && (
+            <div
+              id="captured-query-badge"
+              className="mt-6 px-4 py-2 rounded-full bg-[#f1f3f4] text-[#202124] text-sm flex items-center gap-2 border border-[#dadce0] shadow-xs transition-all animate-fadeIn"
+            >
+              <Search className="w-4 h-4 text-[#4285F4] shrink-0" />
+              <span>
+                Captured query:{" "}
+                <span className="font-semibold text-[#1a73e8]">
+                  &ldquo;{capturedQuery}&rdquo;
+                </span>
+              </span>
+            </div>
+          )}
 
           {/* Google Offered In Languages */}
           <div className="text-center mt-7 text-[13px] text-[#4d5156]">
