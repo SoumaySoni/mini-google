@@ -3,13 +3,6 @@
 :root {
   --background: #ffffff;
   --foreground: #202124;
-  --google-blue: #4285f4;
-  --google-red: #ea4335;
-  --google-yellow: #fbbc05;
-  --google-green: #34a853;
-  --google-gray-bg: #f8f9fa;
-  --google-gray-border: #dfe1e5;
-  --google-footer-bg: #f2f2f2;
 }
 
 body {
@@ -20,44 +13,3 @@ body {
   display: flex;
   flex-direction: column;
 }
-
-.google-search-bar {
-  border: 1px solid #dfe1e5;
-  border-radius: 24px;
-  transition: all 0.2s ease-in-out;
-}
-
-.google-search-bar:hover,
-.google-search-bar:focus-within {
-  background-color: #ffffff;
-  border-color: rgba(223, 225, 229, 0);
-  box-shadow: 0 1px 6px rgba(32, 33, 36, 0.28);
-}
-
-.google-btn {
-  background-color: #f8f9fa;
-  border: 1px solid #f8f9fa;
-  border-radius: 4px;
-  color: #3c4043;
-  font-size: 14px;
-  padding: 0 16px;
-  height: 36px;
-  line-height: 27px;
-  text-align: center;
-  cursor: pointer;
-  user-select: none;
-  transition: all 0.15s ease-in-out;
-}
-
-.google-btn:hover {
-  background-color: #f8f9fa;
-  border-color: #dadce0;
-  color: #202124;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
-}
-
-.google-btn:focus {
-  border-color: #4285f4;
-  outline: none;
-}
-
