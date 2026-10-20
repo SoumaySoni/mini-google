@@ -1,12 +1,38 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Mic, Camera, X, Grid3x3 } from "lucide-react";
 
+interface HealthResponse {
+  status: string;
+  message: string;
+}
+
 export default function Home() {
   const [query, setQuery] = useState("");
+  const [backendStatus, setBackendStatus] = useState<string | null>(null);
+  const [backendMessage, setBackendMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    fetch("http://localhost:5000/api/health")
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json() as Promise<HealthResponse>;
+      })
+      .then((data) => {
+        setBackendStatus(data.status);
+        setBackendMessage(data.message);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch backend status:", err);
+        setError("Disconnected");
+      });
+  }, []);
 
   const handleSearch = (searchQuery: string) => {
     const trimmed = searchQuery.trim();
@@ -36,6 +62,34 @@ export default function Home() {
           >
             Store
           </a>
+        </div>
+
+        {/* Dynamic Backend Status Indicator */}
+        <div
+          id="backend-status-indicator"
+          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium border border-[#dadce0] bg-[#f8f9fa] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+        >
+          <span
+            className={`w-2 h-2 rounded-full ${
+              backendStatus === "Connected"
+                ? "bg-[#188038] shadow-[0_0_6px_#34a853]"
+                : error
+                ? "bg-[#d93025]"
+                : "bg-[#f29900] animate-pulse"
+            }`}
+          />
+          <span className="text-[#5f6368]">Backend Status:</span>
+          <span
+            className={`font-semibold ${
+              backendStatus === "Connected"
+                ? "text-[#188038]"
+                : error
+                ? "text-[#d93025]"
+                : "text-[#b06000]"
+            }`}
+          >
+            {backendStatus ? `${backendStatus} (${backendMessage})` : error ? error : "Connecting..."}
+          </span>
         </div>
 
         <div className="flex items-center space-x-4 md:space-x-5 text-[13px] md:text-sm">
