@@ -1,7 +1,9 @@
 /**
  * Basic Web Crawler Fetcher Module
- * Purpose: Takes a single URL, issues an HTTP request, and retrieves the webpage HTML.
+ * Purpose: Takes a single URL, issues an HTTP request, retrieves the webpage HTML, and extracts discovered links.
  */
+
+import { extractLinks } from "./extractor";
 
 export interface CrawlResult {
   url: string;
@@ -9,10 +11,11 @@ export interface CrawlResult {
   contentType: string | null;
   html: string;
   byteLength: number;
+  links: string[];
 }
 
 /**
- * Fetches a webpage given a URL and returns its HTML content and metadata.
+ * Fetches a webpage given a URL and returns its HTML content, metadata, and extracted links.
  * 
  * @param targetUrl - The webpage URL to fetch (http or https)
  * @param timeoutMs - Request timeout in milliseconds (default: 10000ms)
@@ -46,27 +49,17 @@ export async function fetchWebpage(
 
   const contentType = response.headers.get("content-type");
   const html = await response.text();
+  const finalUrl = response.url || targetUrl;
+  const links = extractLinks(html, finalUrl);
 
   return {
-    url: response.url || targetUrl, // Final URL after any redirects
+    url: finalUrl,
     status: response.status,
     contentType,
     html,
     byteLength: Buffer.byteLength(html, "utf8"),
+    links,
   };
 }
 
-// Allow direct CLI execution for quick testing: npx tsx src/crawler.ts <url>
-if (require.main === module) {
-  const testUrl = process.argv[2] || "https://example.com";
-  console.log(`[Crawler CLI] Testing fetch for: ${testUrl}`);
-  fetchWebpage(testUrl)
-    .then((result) => {
-      console.log(`[Crawler CLI] Success! Status: ${result.status}, Length: ${result.byteLength} bytes`);
-      console.log(`[Crawler CLI] HTML preview (first 250 chars):\n${result.html.slice(0, 250)}...`);
-    })
-    .catch((err) => {
-      console.error(`[Crawler CLI] Failed:`, err);
-      process.exit(1);
-    });
-}
+export { extractLinks };

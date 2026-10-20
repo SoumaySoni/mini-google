@@ -44,6 +44,7 @@ app.post("/api/crawl", async (req: Request, res: Response) => {
       status: result.status,
       contentType: result.contentType,
       byteLength: result.byteLength,
+      links: result.links,
       html: result.html,
     });
   } catch (error: any) {
@@ -69,6 +70,7 @@ app.get("/api/crawl", async (req: Request, res: Response) => {
       status: result.status,
       contentType: result.contentType,
       byteLength: result.byteLength,
+      links: result.links,
       html: result.html,
     });
   } catch (error: any) {
