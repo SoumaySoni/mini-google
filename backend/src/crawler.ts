@@ -3,7 +3,7 @@
  * Purpose: Takes a single URL, issues an HTTP request, retrieves the webpage HTML, and extracts discovered links.
  */
 
-import { extractLinks } from "./extractor";
+import { extractLinks, normalizeUrl, normalizeUrls } from "./extractor";
 
 export interface CrawlResult {
   url: string;
@@ -62,4 +62,4 @@ export async function fetchWebpage(
   };
 }
 
-export { extractLinks };
+export { extractLinks, normalizeUrl, normalizeUrls };
