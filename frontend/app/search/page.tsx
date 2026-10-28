@@ -12,6 +12,12 @@ import {
   Settings,
   MoreVertical,
   SlidersHorizontal,
+  Globe,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+  Layers,
 } from "lucide-react";
 
 interface SearchResultItem {
@@ -20,7 +26,47 @@ interface SearchResultItem {
   url: string;
   displayUrl: string;
   snippet: string;
+  status?: number;
+  byteLength?: number;
+  linksCount?: number;
+  isLiveCrawl?: boolean;
   sitelinks?: { title: string; href: string }[];
+}
+
+interface CrawlReport {
+  startUrl: string;
+  domain: string;
+  maxPages: number;
+  totalPagesCrawled: number;
+  pages: {
+    url: string;
+    title: string;
+    snippet: string;
+    status: number;
+    byteLength: number;
+    discoveredLinksCount: number;
+    sameDomainLinksCount: number;
+    newLinksQueued: number;
+    links: string[];
+    error?: string;
+  }[];
+  queueRemaining: string[];
+  frontierStats: {
+    queued: number;
+    processed: number;
+    totalSeen: number;
+    isEmpty: boolean;
+  };
+  durationMs: number;
+}
+
+function isUrlQuery(q: string): boolean {
+  const trimmed = q.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return true;
+  }
+  // Check if looks like a domain name
+  return /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+(\/.*)?$/.test(trimmed);
 }
 
 function SearchResultsContent() {
@@ -29,19 +75,15 @@ function SearchResultsContent() {
   const rawQuery = searchParams.get("q") || "";
 
   const [inputVal, setInputVal] = useState(rawQuery);
+  const [results, setResults] = useState<SearchResultItem[]>([]);
+  const [isCrawling, setIsCrawling] = useState(false);
+  const [crawlReport, setCrawlReport] = useState<CrawlReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Sync input value whenever the URL query parameter changes
   useEffect(() => {
     setInputVal(rawQuery);
   }, [rawQuery]);
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = inputVal.trim();
-    if (trimmed) {
-      router.push(`/search?q=${encodeURIComponent(trimmed)}`);
-    }
-  };
 
   // Generate dynamic mock results based on the search query
   const getMockResults = (q: string): SearchResultItem[] => {
@@ -77,26 +119,10 @@ function SearchResultsContent() {
             { title: "Templates", href: "https://vercel.com/templates" },
           ],
         },
-        {
-          id: "react-wiki",
-          title: "React (software) - Wikipedia",
-          url: "https://en.wikipedia.org/wiki/React_(software)",
-          displayUrl: "https://en.wikipedia.org > wiki > React_(software)",
-          snippet:
-            "React (also known as React.js or ReactJS) is a free and open-source front-end JavaScript library for building user interfaces based on components. It is maintained by Meta and a community.",
-        },
-        {
-          id: "react-github",
-          title: "facebook/react: The library for web and native user interfaces",
-          url: "https://github.com/facebook/react",
-          displayUrl: "https://github.com > facebook > react",
-          snippet:
-            "React is a JavaScript library for building user interfaces. Declarative: React makes it painless to create interactive UIs. Component-Based: Build encapsulated components that manage their own state.",
-        },
       ];
     }
 
-    // Default mock results for any other search query
+    // Default mock results for generic non-URL queries
     return [
       {
         id: "result-1",
@@ -118,24 +144,112 @@ function SearchResultsContent() {
         displayUrl: `https://en.wikipedia.org > wiki > ${q}`,
         snippet: `Comprehensive overview of ${q}. Learn about its origins, architecture, key features, real-world applications, and why it is widely used today.`,
       },
-      {
-        id: "result-3",
-        title: `GitHub - Awesome resources and projects for ${q}`,
-        url: `https://github.com/topics/${encodeURIComponent(q)}`,
-        displayUrl: `https://github.com > topics > ${q}`,
-        snippet: `A curated list of awesome frameworks, libraries, software, and resources built around ${q}. Contribute and star top community projects.`,
-      },
-      {
-        id: "result-4",
-        title: `${q} News, Articles & Technical Insights`,
-        url: `https://news.ycombinator.com`,
-        displayUrl: `https://news.ycombinator.com > item?query=${encodeURIComponent(q)}`,
-        snippet: `Latest discussions, industry updates, and engineering deep-dives covering ${q} and modern technology trends.`,
-      },
     ];
   };
 
-  const results = rawQuery ? getMockResults(rawQuery) : [];
+  // Connect to the real backend crawler when the query is a URL
+  useEffect(() => {
+    if (!rawQuery.trim()) {
+      setResults([]);
+      setCrawlReport(null);
+      setError(null);
+      return;
+    }
+
+    if (isUrlQuery(rawQuery)) {
+      const targetUrl =
+        rawQuery.startsWith("http://") || rawQuery.startsWith("https://")
+          ? rawQuery.trim()
+          : `https://${rawQuery.trim()}`;
+
+      setIsCrawling(true);
+      setError(null);
+      setCrawlReport(null);
+
+      fetch("http://localhost:5000/api/crawl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: targetUrl, maxPages: 5 }),
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${res.status}`);
+          }
+          return res.json();
+        })
+        .then((data) => {
+          if (data.success && data.pages) {
+            setCrawlReport(data);
+
+            const mapped: SearchResultItem[] = data.pages.map((p: any, idx: number) => {
+              let displayUrl = p.url;
+              try {
+                const u = new URL(p.url);
+                const pathParts = u.pathname.split("/").filter(Boolean);
+                displayUrl = `${u.origin}${pathParts.length ? ` > ${pathParts.join(" > ")}` : ""}`;
+              } catch {}
+
+              const sitelinks = p.links
+                ?.filter((l: string) => l !== p.url)
+                ?.slice(0, 4)
+                ?.map((l: string) => {
+                  let linkText = l;
+                  try {
+                    const parsedL = new URL(l);
+                    const pathSegments = parsedL.pathname.split("/").filter(Boolean);
+                    linkText =
+                      pathSegments.length > 0
+                        ? pathSegments.slice(-2).join(" / ")
+                        : "Home";
+                  } catch {}
+                  return { title: linkText, href: l };
+                });
+
+              return {
+                id: `crawl-${idx}-${p.url}`,
+                title: p.title || p.url,
+                url: p.url,
+                displayUrl,
+                snippet:
+                  p.snippet ||
+                  `Live crawled page on ${data.domain} • ${p.byteLength} bytes • Status ${p.status}`,
+                status: p.status,
+                byteLength: p.byteLength,
+                linksCount: p.discoveredLinksCount,
+                isLiveCrawl: true,
+                sitelinks: sitelinks && sitelinks.length > 0 ? sitelinks : undefined,
+              };
+            });
+
+            setResults(mapped);
+          } else {
+            setResults(getMockResults(rawQuery));
+          }
+        })
+        .catch((err) => {
+          console.error("Live crawl error:", err);
+          setError(`Crawler Notice: ${err.message}. Showing fallback results.`);
+          setResults(getMockResults(rawQuery));
+        })
+        .finally(() => {
+          setIsCrawling(false);
+        });
+    } else {
+      setCrawlReport(null);
+      setError(null);
+      setIsCrawling(false);
+      setResults(getMockResults(rawQuery));
+    }
+  }, [rawQuery]);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = inputVal.trim();
+    if (trimmed) {
+      router.push(`/search?q=${encodeURIComponent(trimmed)}`);
+    }
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#202124] font-sans select-none">
@@ -175,7 +289,7 @@ function SearchResultsContent() {
                 type="text"
                 value={inputVal}
                 onChange={(e) => setInputVal(e.target.value)}
-                placeholder=""
+                placeholder="Search or enter URL (e.g. https://quotes.toscrape.com)"
                 autoComplete="off"
                 className="flex-1 h-full bg-transparent outline-none text-[#202124] text-[15px]"
               />
@@ -273,45 +387,143 @@ function SearchResultsContent() {
       </header>
 
       {/* Main Results Content Area */}
-      <main className="flex-1 px-4 sm:px-6 md:pl-[184px] md:pr-8 py-3 max-w-[1200px]">
+      <main className="flex-1 px-4 sm:px-6 md:pl-[184px] md:pr-8 py-4 max-w-[1200px]">
         {/* Results Metadata */}
-        <div className="text-[14px] text-[#70757a] mb-5">
+        <div className="text-[14px] text-[#70757a] mb-4">
           {rawQuery ? (
             <span>
-              About 2,840,000,000 results (0.34 seconds) for{" "}
+              {crawlReport
+                ? `Crawled ${crawlReport.totalPagesCrawled} pages in ${(crawlReport.durationMs / 1000).toFixed(2)} seconds for `
+                : "About 2,840,000,000 results (0.34 seconds) for "}
               <strong className="text-[#202124] font-medium">&ldquo;{rawQuery}&rdquo;</strong>
             </span>
           ) : (
-            <span>Please enter a query in the search box above.</span>
+            <span>Please enter a query or website URL in the search box above.</span>
           )}
         </div>
 
+        {/* Live Crawl Progress Indicator */}
+        {isCrawling && (
+          <div className="mb-6 p-4 rounded-xl border border-[#d2e3fc] bg-[#f8fafd] max-w-[652px] animate-pulse">
+            <div className="flex items-center gap-3 text-[#1967d2]">
+              <Loader2 className="w-5 h-5 animate-spin shrink-0 text-[#1a73e8]" />
+              <div className="flex-1">
+                <div className="font-medium text-[15px]">
+                  🕷️ Real Crawler in Progress...
+                </div>
+                <div className="text-[13px] text-[#5f6368] mt-0.5">
+                  Fetching pages, extracting links, and filtering same-domain URLs on{" "}
+                  <code className="text-[#1a73e8] font-mono text-xs">{rawQuery}</code>
+                </div>
+              </div>
+            </div>
+            <div className="w-full bg-[#e8f0fe] h-1.5 rounded-full overflow-hidden mt-3">
+              <div className="bg-[#1a73e8] h-full w-2/3 animate-[pulse_1s_infinite]" />
+            </div>
+          </div>
+        )}
+
+        {/* Live Crawl Summary Badge */}
+        {crawlReport && !isCrawling && (
+          <div className="mb-6 p-4 rounded-xl border border-[#ceead6] bg-[#f6fbf7] text-[#137333] max-w-[652px] shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-[#188038] shrink-0" />
+                <span className="font-semibold text-[15px] text-[#188038]">
+                  Live Crawler Orchestrator Completed
+                </span>
+              </div>
+              <span className="text-xs bg-[#e6f4ea] text-[#137333] font-medium px-2.5 py-1 rounded-full border border-[#ceead6]">
+                Same-Domain Only
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-3 border-t border-[#ceead6]/60 text-xs">
+              <div>
+                <span className="text-[#5f6368] block">Domain</span>
+                <span className="font-medium text-[#202124] truncate block">
+                  {crawlReport.domain}
+                </span>
+              </div>
+              <div>
+                <span className="text-[#5f6368] block">Pages Crawled</span>
+                <span className="font-semibold text-[#188038]">
+                  {crawlReport.totalPagesCrawled} / {crawlReport.maxPages}
+                </span>
+              </div>
+              <div>
+                <span className="text-[#5f6368] block">Total Links Seen</span>
+                <span className="font-medium text-[#202124]">
+                  {crawlReport.frontierStats.totalSeen}
+                </span>
+              </div>
+              <div>
+                <span className="text-[#5f6368] block">Queue Left</span>
+                <span className="font-medium text-[#202124]">
+                  {crawlReport.frontierStats.queued}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error Notification */}
+        {error && (
+          <div className="mb-6 p-3 rounded-lg border border-[#fce8e6] bg-[#fdf2f2] text-[#c5221f] text-sm flex items-center gap-2 max-w-[652px]">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         {/* Results List */}
-        <div className="space-y-8 max-w-[652px]">
+        <div className="space-y-7 max-w-[652px]">
           {results.map((result) => (
             <div key={result.id} className="group">
               {/* Domain & URL preview */}
               <div className="flex items-center space-x-2 text-[12px] text-[#202124] mb-1">
-                <div className="w-4 h-4 rounded-full bg-[#f1f3f4] flex items-center justify-center text-[10px] text-[#5f6368] font-bold">
-                  {result.title.charAt(0)}
+                <div className="w-5 h-5 rounded-full bg-[#f1f3f4] flex items-center justify-center text-[11px] text-[#5f6368] font-bold">
+                  {result.isLiveCrawl ? (
+                    <Globe className="w-3 h-3 text-[#1a73e8]" />
+                  ) : (
+                    result.title.charAt(0)
+                  )}
                 </div>
-                <div className="flex flex-col leading-tight">
-                  <span className="text-[14px] text-[#202124]">{result.displayUrl.split(" ")[0]}</span>
-                  <span className="text-[12px] text-[#4d5156]">{result.displayUrl}</span>
+                <div className="flex flex-col leading-tight overflow-hidden">
+                  <span className="text-[14px] text-[#202124] truncate">
+                    {result.displayUrl.split(" ")[0]}
+                  </span>
+                  <span className="text-[12px] text-[#4d5156] truncate">
+                    {result.displayUrl}
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  className="opacity-0 group-hover:opacity-100 p-1 text-[#5f6368] hover:text-[#202124] transition-opacity ml-auto"
-                  aria-label="More options"
-                >
-                  <MoreVertical className="w-3.5 h-3.5" />
-                </button>
+
+                {result.isLiveCrawl && result.status ? (
+                  <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#e6f4ea] text-[#137333] shrink-0">
+                    HTTP {result.status}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="opacity-0 group-hover:opacity-100 p-1 text-[#5f6368] hover:text-[#202124] transition-opacity ml-auto"
+                    aria-label="More options"
+                  >
+                    <MoreVertical className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               {/* Title */}
               <h2 className="text-[20px] leading-snug font-normal text-[#1a0dab] group-hover:underline cursor-pointer">
-                <a href={result.url} target="_blank" rel="noopener noreferrer">
-                  {result.title}
+                <a
+                  href={result.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5"
+                >
+                  <span>{result.title}</span>
+                  {result.isLiveCrawl && (
+                    <ExternalLink className="w-3.5 h-3.5 opacity-60 inline" />
+                  )}
                 </a>
               </h2>
 
@@ -320,16 +532,31 @@ function SearchResultsContent() {
                 {result.snippet}
               </p>
 
+              {/* Crawl Metadata Tags */}
+              {result.isLiveCrawl && (
+                <div className="flex items-center gap-3 mt-2 text-[12px] text-[#5f6368]">
+                  {result.byteLength ? (
+                    <span>📦 {(result.byteLength / 1024).toFixed(1)} KB</span>
+                  ) : null}
+                  {result.linksCount ? (
+                    <span>🔗 {result.linksCount} links extracted</span>
+                  ) : null}
+                  <span className="text-[#188038] font-medium">✓ Same Domain</span>
+                </div>
+              )}
+
               {/* Sitelinks (if present) */}
-              {result.sitelinks && (
+              {result.sitelinks && result.sitelinks.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mt-3 pt-2 pl-3 border-l-2 border-[#dadce0]">
                   {result.sitelinks.map((sitelink, idx) => (
                     <div key={idx}>
                       <a
                         href={sitelink.href}
-                        className="text-[14px] text-[#1a0dab] hover:underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[14px] text-[#1a0dab] hover:underline flex items-center gap-1"
                       >
-                        {sitelink.title}
+                        <span className="truncate">{sitelink.title}</span>
                       </a>
                     </div>
                   ))}
@@ -367,37 +594,17 @@ function SearchResultsContent() {
             </div>
           </div>
         )}
-
-        {/* Pagination Section */}
-        {rawQuery && (
-          <div className="mt-12 mb-8 flex items-center justify-center max-w-[652px] space-x-3 text-sm">
-            <span className="text-[#4285F4] font-semibold text-lg">M</span>
-            <span className="text-[#EA4335] font-semibold text-lg">i</span>
-            <span className="text-[#FBBC05] font-semibold text-lg">n</span>
-            <span className="text-[#34A853] font-semibold text-lg">i</span>
-            <span className="space-x-2 text-[#1a0dab]">
-              <span className="px-2 py-1 font-bold text-[#202124] border-b-2 border-[#202124]">
-                1
-              </span>
-              <span className="px-2 py-1 hover:underline cursor-pointer">2</span>
-              <span className="px-2 py-1 hover:underline cursor-pointer">3</span>
-              <span className="px-2 py-1 hover:underline cursor-pointer">4</span>
-              <span className="px-2 py-1 hover:underline cursor-pointer">5</span>
-              <span className="px-2 py-1 hover:underline cursor-pointer">Next &gt;</span>
-            </span>
-          </div>
-        )}
       </main>
 
       {/* Results Footer */}
       <footer className="mt-auto bg-[#f2f2f2] text-[#70757a] text-[13px] border-t border-[#dadce0]">
         <div className="px-4 md:px-8 py-3 border-b border-[#dadce0] flex items-center space-x-4">
-          <span className="font-medium text-[#3c4043]">India</span>
+          <span className="font-medium text-[#3c4043]">Mini Google Crawler</span>
           <span className="w-1 h-1 rounded-full bg-[#70757a]" />
-          <span>From your IP address</span>
+          <span>Backend: http://localhost:5000</span>
           <span className="w-1 h-1 rounded-full bg-[#70757a]" />
-          <a href="#update" className="text-[#1a0dab] hover:underline">
-            Update location
+          <a href="#crawler" className="text-[#1a0dab] hover:underline">
+            Crawler Status
           </a>
         </div>
         <div className="px-4 md:px-8 py-3 flex flex-wrap gap-x-6 gap-y-2">

@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { fetchWebpage } from "./crawler";
+import { fetchWebpage, crawl } from "./crawler";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -26,21 +26,36 @@ app.get("/api/health", (req: Request, res: Response) => {
 });
 
 /**
- * Basic Crawler Endpoint
- * Accepts a URL via query param or JSON body, fetches the webpage HTML, and returns the result.
+ * Crawler Endpoint
+ * Accepts a URL and optional maxPages/limit to orchestrate multi-page or single-page crawls.
  */
 app.post("/api/crawl", async (req: Request, res: Response) => {
-  const { url } = req.body;
+  const { url, maxPages, limit } = req.body;
   if (!url || typeof url !== "string") {
     res.status(400).json({ error: "Missing or invalid 'url' in request body" });
     return;
   }
 
+  const pageLimit = typeof maxPages === "number" ? maxPages : typeof limit === "number" ? limit : undefined;
+
   try {
+    if (pageLimit && pageLimit > 1) {
+      const report = await crawl(url, pageLimit);
+      res.json({
+        success: true,
+        type: "crawl_batch",
+        ...report,
+      });
+      return;
+    }
+
     const result = await fetchWebpage(url);
     res.json({
       success: true,
+      type: "single_fetch",
       url: result.url,
+      title: result.title,
+      snippet: result.snippet,
       status: result.status,
       contentType: result.contentType,
       byteLength: result.byteLength,
@@ -62,11 +77,27 @@ app.get("/api/crawl", async (req: Request, res: Response) => {
     return;
   }
 
+  const rawLimit = req.query.maxPages || req.query.limit;
+  const pageLimit = rawLimit ? parseInt(rawLimit as string, 10) : undefined;
+
   try {
+    if (pageLimit && !isNaN(pageLimit) && pageLimit > 1) {
+      const report = await crawl(url, pageLimit);
+      res.json({
+        success: true,
+        type: "crawl_batch",
+        ...report,
+      });
+      return;
+    }
+
     const result = await fetchWebpage(url);
     res.json({
       success: true,
+      type: "single_fetch",
       url: result.url,
+      title: result.title,
+      snippet: result.snippet,
       status: result.status,
       contentType: result.contentType,
       byteLength: result.byteLength,
