@@ -4,9 +4,10 @@
   "private": true,
   "description": "Mini Google monorepo",
   "scripts": {
-    "dev": "concurrently -n \"frontend,backend\" -c \"cyan,magenta\" \"npm run dev --prefix frontend\" \"npm run dev --prefix backend\"",
+    "dev": "concurrently -n \"frontend,backend\" -c \"cyan,magenta\" \"npm run dev --prefix frontend -- -p 3001\" \"npm run dev --prefix backend\"",
     "dev:frontend": "npm run dev --prefix frontend",
-    "dev:backend": "npm run dev --prefix backend"
+    "dev:backend": "npm run dev --prefix backend",
+    "db:view": "npm run db:view --prefix backend"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

@@ -11,6 +11,7 @@
 import * as cheerio from "cheerio";
 import { extractLinks, normalizeUrl, normalizeUrls } from "./extractor";
 import { UrlFrontier } from "./frontier";
+import { initDb, savePage, getPageCount } from "./db";
 
 export interface CrawlResult {
   url: string;
@@ -34,6 +35,7 @@ export interface CrawledPage {
   sameDomainLinksCount: number;
   newLinksQueued: number;
   links: string[];
+  dbId?: number;
   error?: string;
 }
 
@@ -216,6 +218,9 @@ export async function crawl(
   log(`📑 Page Limit   : ${limit}`);
   log(`======================================================\n`);
 
+  // Ensure PostgreSQL schema is ready
+  await initDb();
+
   const frontier = new UrlFrontier();
   frontier.add(normalizedStart);
 
@@ -235,6 +240,16 @@ export async function crawl(
 
     try {
       const result = await fetchWebpage(currentUrl, options.timeoutMs ?? 10000);
+
+      // Store crawled page in PostgreSQL
+      const stored = await savePage({
+        url: result.url,
+        title: result.title,
+        html: result.html,
+        status: result.status,
+        contentType: result.contentType,
+        crawledAt: new Date(),
+      });
 
       // Filter extracted links for same domain only
       const sameDomainLinks: string[] = [];
@@ -267,12 +282,14 @@ export async function crawl(
         sameDomainLinksCount: sameDomainLinks.length,
         newLinksQueued: newQueuedCount,
         links: sameDomainLinks,
+        dbId: stored.id,
       };
 
       log(
         `   ↳ Status: ${result.status} | Title: "${result.title}" | Found: ${result.links.length} links ` +
           `(${sameDomainLinks.length} internal, ${externalLinks.length} external) | ` +
-          `Queued: +${newQueuedCount} new | Queue size: ${frontier.size()}`
+          `Queued: +${newQueuedCount} new | Queue size: ${frontier.size()} | ` +
+          `💾 Stored in PostgreSQL (id: ${stored.id})`
       );
     } catch (err: any) {
       crawledPage = {
@@ -341,6 +358,7 @@ export class Crawler {
 // Re-export underlying components for convenient imports
 export { extractLinks, normalizeUrl, normalizeUrls };
 export { UrlFrontier, UrlQueue } from "./frontier";
+export { initDb, savePage, getPages, getPageByUrl, getPageCount } from "./db";
 
 // CLI entry point: run directly with `npx tsx src/crawler.ts <url> <maxPages>`
 if (require.main === module) {
