@@ -9,9 +9,10 @@
  */
 
 import * as cheerio from "cheerio";
-import { extractLinks, normalizeUrl, normalizeUrls } from "./extractor";
+import { extractLinks, extractText, normalizeUrl, normalizeUrls } from "./extractor";
 import { UrlFrontier } from "./frontier";
 import { initDb, savePage, getPageCount } from "./db";
+import { saveCrawledPage } from "./page-repository";
 
 export interface CrawlResult {
   url: string;
@@ -20,6 +21,7 @@ export interface CrawlResult {
   status: number;
   contentType: string | null;
   html: string;
+  pageText: string;
   byteLength: number;
   links: string[];
 }
@@ -142,6 +144,7 @@ export async function fetchWebpage(
   const html = await response.text();
   const finalUrl = response.url || targetUrl;
   const links = extractLinks(html, finalUrl);
+  const pageText = extractText(html);
 
   const $ = cheerio.load(html);
   const rawTitle = $("title").first().text().trim();
@@ -172,6 +175,7 @@ export async function fetchWebpage(
     status: response.status,
     contentType,
     html,
+    pageText,
     byteLength: Buffer.byteLength(html, "utf8"),
     links,
   };
@@ -241,15 +245,8 @@ export async function crawl(
     try {
       const result = await fetchWebpage(currentUrl, options.timeoutMs ?? 10000);
 
-      // Store crawled page in PostgreSQL
-      const stored = await savePage({
-        url: result.url,
-        title: result.title,
-        html: result.html,
-        status: result.status,
-        contentType: result.contentType,
-        crawledAt: new Date(),
-      });
+      // Store crawled page in PostgreSQL via Prisma repository
+      const stored = await saveCrawledPage(result);
 
       // Filter extracted links for same domain only
       const sameDomainLinks: string[] = [];
@@ -356,9 +353,10 @@ export class Crawler {
 }
 
 // Re-export underlying components for convenient imports
-export { extractLinks, normalizeUrl, normalizeUrls };
+export { extractLinks, extractText, normalizeUrl, normalizeUrls };
 export { UrlFrontier, UrlQueue } from "./frontier";
 export { initDb, savePage, getPages, getPageByUrl, getPageCount } from "./db";
+export { saveCrawledPage } from "./page-repository";
 
 // CLI entry point: run directly with `npx tsx src/crawler.ts <url> <maxPages>`
 if (require.main === module) {

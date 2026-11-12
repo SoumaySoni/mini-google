@@ -1,13 +1,14 @@
 // use prisma-8
 
 model Page {
-  id          Int      @id @default(autoincrement())
-  url         String   @unique
+  id          Int       @id @default(autoincrement())
+  url         String    @unique
   title       String?
   html        String
+  pageText    String?   @map("page_text")
   status      Int
-  contentType String?  @map("content_type")
-  crawledAt   DateTime @default(now()) @map("crawled_at")
+  contentType String?   @map("content_type")
+  crawledAt   TimestampJsDate(6)  @default(now()) @map("crawled_at")
 
   @@map("pages")
 }

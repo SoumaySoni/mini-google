@@ -23,7 +23,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'411112924463cae4ecb0ea9f7909caabd5de0e3ea4be877e49d8607cb3a3f067'>;
+  StorageHashBase<'cb37d0a582db2ae9a94e63fa11e08e97666092c3a2e2b983373b3983c3661800'>;
 export type ExecutionHash = ExecutionHashBase<string>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
@@ -313,6 +313,7 @@ export namespace Models {
     crawledAt: FieldOutputTypes['public']['Page']['crawledAt'];
     html: FieldOutputTypes['public']['Page']['html'];
     id: FieldOutputTypes['public']['Page']['id'];
+    pageText: FieldOutputTypes['public']['Page']['pageText'];
     status: FieldOutputTypes['public']['Page']['status'];
     title: FieldOutputTypes['public']['Page']['title'];
     url: FieldOutputTypes['public']['Page']['url'];
@@ -353,11 +354,11 @@ type ContractBase = Omit<
                   readonly many: false;
                 };
                 readonly crawled_at: {
-                  readonly dataType: 'pg/timestamptz';
-                  readonly codecId: 'pg/timestamptz-date@1';
+                  readonly dataType: 'pg/timestamp';
+                  readonly codecId: 'pg/timestamp-date@1';
                   readonly nullable: false;
                   readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
-                  readonly typeParams: { readonly precision: 3 };
+                  readonly typeParams: { readonly precision: 6 };
                   readonly many: false;
                 };
                 readonly html: {
@@ -374,6 +375,12 @@ type ContractBase = Omit<
                     readonly kind: 'function';
                     readonly expression: 'autoincrement()';
                   };
+                  readonly many: false;
+                };
+                readonly page_text: {
+                  readonly dataType: 'pg/text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
                   readonly many: false;
                 };
                 readonly status: {
@@ -427,8 +434,8 @@ type ContractBase = Omit<
                 readonly nullable: false;
                 readonly type: {
                   readonly kind: 'scalar';
-                  readonly codecId: 'pg/timestamptz-date@1';
-                  readonly typeParams: { readonly precision: 3 };
+                  readonly codecId: 'pg/timestamp-date@1';
+                  readonly typeParams: { readonly precision: 6 };
                 };
               };
               readonly html: {
@@ -438,6 +445,10 @@ type ContractBase = Omit<
               readonly id: {
                 readonly nullable: false;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
+              };
+              readonly pageText: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
               };
               readonly status: {
                 readonly nullable: false;
@@ -461,6 +472,7 @@ type ContractBase = Omit<
                 readonly crawledAt: { readonly column: 'crawled_at' };
                 readonly html: { readonly column: 'html' };
                 readonly id: { readonly column: 'id' };
+                readonly pageText: { readonly column: 'page_text' };
                 readonly status: { readonly column: 'status' };
                 readonly title: { readonly column: 'title' };
                 readonly url: { readonly column: 'url' };

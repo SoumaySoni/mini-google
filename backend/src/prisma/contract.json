@@ -25,10 +25,10 @@
               "crawledAt": {
                 "nullable": false,
                 "type": {
-                  "codecId": "pg/timestamptz-date@1",
+                  "codecId": "pg/timestamp-date@1",
                   "kind": "scalar",
                   "typeParams": {
-                    "precision": 3
+                    "precision": 6
                   }
                 }
               },
@@ -43,6 +43,13 @@
                 "nullable": false,
                 "type": {
                   "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "pageText": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
                   "kind": "scalar"
                 }
               },
@@ -83,6 +90,9 @@
                 "id": {
                   "column": "id"
                 },
+                "pageText": {
+                  "column": "page_text"
+                },
                 "status": {
                   "column": "status"
                 },
@@ -114,15 +124,15 @@
                   "nullable": true
                 },
                 "crawled_at": {
-                  "codecId": "pg/timestamptz-date@1",
-                  "dataType": "pg/timestamptz",
+                  "codecId": "pg/timestamp-date@1",
+                  "dataType": "pg/timestamp",
                   "default": {
                     "expression": "now()",
                     "kind": "function"
                   },
                   "nullable": false,
                   "typeParams": {
-                    "precision": 3
+                    "precision": 6
                   }
                 },
                 "html": {
@@ -138,6 +148,11 @@
                     "kind": "function"
                   },
                   "nullable": false
+                },
+                "page_text": {
+                  "codecId": "pg/text@1",
+                  "dataType": "pg/text",
+                  "nullable": true
                 },
                 "status": {
                   "codecId": "pg/int4@1",
@@ -176,7 +191,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "411112924463cae4ecb0ea9f7909caabd5de0e3ea4be877e49d8607cb3a3f067"
+    "storageHash": "cb37d0a582db2ae9a94e63fa11e08e97666092c3a2e2b983373b3983c3661800"
   },
   "capabilities": {
     "postgres": {

@@ -26,6 +26,7 @@ export interface StoredPageInput {
   url: string;
   title: string | null;
   html: string;
+  pageText?: string | null;
   status: number;
   contentType: string | null;
   crawledAt?: Date | string;
@@ -35,6 +36,7 @@ export interface StoredPageRecord {
   id: number;
   url: string;
   title: string | null;
+  page_text?: string | null;
   status: number;
   content_type: string | null;
   crawled_at: string | Date;
@@ -133,6 +135,7 @@ export async function initDb(): Promise<void> {
       url TEXT UNIQUE NOT NULL,
       title TEXT,
       html TEXT NOT NULL,
+      page_text TEXT,
       status INTEGER NOT NULL,
       content_type TEXT,
       crawled_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -161,15 +164,16 @@ export async function savePage(page: StoredPageInput): Promise<StoredPageRecord>
   const db = await getDb();
 
   const upsertSql = `
-    INSERT INTO pages (url, title, html, status, content_type, crawled_at)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO pages (url, title, html, page_text, status, content_type, crawled_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     ON CONFLICT (url) DO UPDATE SET
       title = EXCLUDED.title,
       html = EXCLUDED.html,
+      page_text = EXCLUDED.page_text,
       status = EXCLUDED.status,
       content_type = EXCLUDED.content_type,
       crawled_at = EXCLUDED.crawled_at
-    RETURNING id, url, title, status, content_type, crawled_at;
+    RETURNING id, url, title, page_text, status, content_type, crawled_at;
   `;
 
   const crawledAt = page.crawledAt ? new Date(page.crawledAt).toISOString() : new Date().toISOString();
@@ -178,6 +182,7 @@ export async function savePage(page: StoredPageInput): Promise<StoredPageRecord>
     page.url,
     page.title,
     page.html,
+    page.pageText ?? null,
     page.status,
     page.contentType,
     crawledAt,
