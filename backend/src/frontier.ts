@@ -11,12 +11,13 @@ export class UrlFrontier {
   private queue: string[] = [];
   private head: number = 0;
   private seen: Set<string> = new Set();
+  private visited: Set<string> = new Set();
 
   /**
-   * Adds a URL to the queue if it has not been seen before.
+   * Adds a URL to the queue if it has not been seen or visited before.
    *
    * @param url - The URL string to add.
-   * @returns true if the URL was newly added, false if it was already seen or invalid.
+   * @returns true if the URL was newly added, false if it was already seen, visited, or invalid.
    */
   add(url: string): boolean {
     if (!url || typeof url !== "string") {
@@ -28,8 +29,8 @@ export class UrlFrontier {
       return false;
     }
 
-    // Prevent duplicate URLs from ever being queued again
-    if (this.seen.has(trimmed)) {
+    // Prevent duplicate URLs that are already queued or already crawled
+    if (this.visited.has(trimmed) || this.seen.has(trimmed)) {
       return false;
     }
 
@@ -105,7 +106,33 @@ export class UrlFrontier {
    */
   hasSeen(url: string): boolean {
     if (!url || typeof url !== "string") return false;
-    return this.seen.has(url.trim());
+    const trimmed = url.trim();
+    return this.seen.has(trimmed) || this.visited.has(trimmed);
+  }
+
+  /**
+   * Marks a URL as visited/crawled.
+   */
+  markVisited(url: string): void {
+    if (!url || typeof url !== "string") return;
+    const trimmed = url.trim();
+    this.visited.add(trimmed);
+    this.seen.add(trimmed);
+  }
+
+  /**
+   * Checks whether a URL has already been crawled/visited.
+   */
+  isVisited(url: string): boolean {
+    if (!url || typeof url !== "string") return false;
+    return this.visited.has(url.trim());
+  }
+
+  /**
+   * Returns the count of unique visited/crawled URLs.
+   */
+  getVisitedCount(): number {
+    return this.visited.size;
   }
 
   /**
@@ -116,12 +143,13 @@ export class UrlFrontier {
   }
 
   /**
-   * Resets the queue and seen history.
+   * Resets the queue and seen/visited history.
    */
   clear(): void {
     this.queue = [];
     this.head = 0;
     this.seen.clear();
+    this.visited.clear();
   }
 
   /**
@@ -131,6 +159,7 @@ export class UrlFrontier {
     return {
       queued: this.size(),
       processed: this.head,
+      visited: this.visited.size,
       totalSeen: this.seen.size,
       isEmpty: this.isEmpty(),
     };

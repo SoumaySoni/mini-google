@@ -45,6 +45,7 @@ export interface FrontierStats {
   queued: number;
   processed: number;
   totalSeen: number;
+  visited?: number;
   isEmpty: boolean;
 }
 
@@ -226,6 +227,7 @@ export async function crawl(
   await initDb();
 
   const frontier = new UrlFrontier();
+  const visited = new Set<string>();
   frontier.add(normalizedStart);
 
   const pages: CrawledPage[] = [];
@@ -237,30 +239,47 @@ export async function crawl(
       break;
     }
 
+    // Prevent duplicate crawls: skip if already visited
+    if (visited.has(currentUrl) || frontier.isVisited(currentUrl)) {
+      continue;
+    }
+
+    // Mark as visited/crawled
+    visited.add(currentUrl);
+    frontier.markVisited(currentUrl);
+
     pagesCrawled++;
-    log(`[${pagesCrawled}/${limit}] 📥 Fetching: ${currentUrl}`);
+    log(`Crawling: ${currentUrl}`);
 
     let crawledPage: CrawledPage;
 
     try {
       const result = await fetchWebpage(currentUrl, options.timeoutMs ?? 10000);
 
+      // Track redirected final URL as visited as well
+      if (result.url && result.url !== currentUrl) {
+        visited.add(result.url);
+        frontier.markVisited(result.url);
+      }
+
       // Store crawled page in PostgreSQL via Prisma repository
       const stored = await saveCrawledPage(result);
 
-      // Filter extracted links for same domain only
+      // Filter extracted links for same domain only and not already visited
       const sameDomainLinks: string[] = [];
       const externalLinks: string[] = [];
 
       for (const link of result.links) {
         if (isSameDomain(link, normalizedStart)) {
-          sameDomainLinks.push(link);
+          if (!visited.has(link) && !frontier.isVisited(link)) {
+            sameDomainLinks.push(link);
+          }
         } else {
           externalLinks.push(link);
         }
       }
 
-      // Add new same-domain links to the frontier
+      // Add new unvisited same-domain links to the frontier
       let newQueuedCount = 0;
       for (const link of sameDomainLinks) {
         if (frontier.add(link)) {
@@ -284,9 +303,9 @@ export async function crawl(
 
       log(
         `   ↳ Status: ${result.status} | Title: "${result.title}" | Found: ${result.links.length} links ` +
-          `(${sameDomainLinks.length} internal, ${externalLinks.length} external) | ` +
-          `Queued: +${newQueuedCount} new | Queue size: ${frontier.size()} | ` +
-          `💾 Stored in PostgreSQL (id: ${stored.id})`
+          `(${sameDomainLinks.length} internal, +${newQueuedCount} queued) | ` +
+          `Queue: ${frontier.size()} | Visited: ${visited.size} | ` +
+          `💾 Stored (id: ${stored.id})`
       );
     } catch (err: any) {
       crawledPage = {
@@ -325,6 +344,7 @@ export async function crawl(
   log(`🏁 Crawl Complete!`);
   log(`⏱️  Duration      : ${(durationMs / 1000).toFixed(2)}s`);
   log(`📄 Pages Crawled : ${pages.length}`);
+  log(`🔍 Total Visited : ${visited.size}`);
   log(`🔍 Total Seen    : ${stats.totalSeen}`);
   log(`📬 Queue Left    : ${stats.queued}`);
   log(`======================================================\n`);
