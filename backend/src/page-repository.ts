@@ -74,3 +74,5 @@ export async function saveCrawledPage(result: CrawlResult): Promise<SavedPage> {
     crawledAt: row.crawledAt,
   };
 }
+
+export { searchPages, SearchResultItem, generateSnippet } from "./db";

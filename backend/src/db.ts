@@ -253,6 +253,80 @@ export async function clearPages(): Promise<number> {
 }
 
 /**
+ * Search result item representing a matching page with snippet.
+ */
+export interface SearchResultItem {
+  id: number;
+  url: string;
+  title: string | null;
+  snippet: string;
+}
+
+/**
+ * Extracts a concise snippet centered around the query keyword.
+ */
+export function generateSnippet(text: string | null | undefined, query: string, maxLength: number = 180): string {
+  if (!text) return "";
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= maxLength) return clean;
+
+  const lowerText = clean.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const matchIndex = lowerText.indexOf(lowerQuery);
+
+  if (matchIndex === -1) {
+    return clean.slice(0, maxLength).trim() + "...";
+  }
+
+  const start = Math.max(0, matchIndex - 40);
+  const end = Math.min(clean.length, matchIndex + query.length + 100);
+
+  let snippet = clean.slice(start, end).trim();
+  if (start > 0) snippet = "..." + snippet;
+  if (end < clean.length) snippet = snippet + "...";
+
+  return snippet;
+}
+
+/**
+ * Performs a basic database search across page titles and text content.
+ *
+ * @param query - The user search string.
+ * @param limit - Maximum number of matching pages to return (default: 50).
+ */
+export async function searchPages(query: string, limit: number = 50): Promise<SearchResultItem[]> {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const db = await getDb();
+  const pattern = `%${trimmed}%`;
+
+  const sql = `
+    SELECT id, url, title, page_text
+    FROM pages
+    WHERE title ILIKE $1 OR page_text ILIKE $1
+    ORDER BY
+      CASE WHEN title ILIKE $1 THEN 1 ELSE 2 END,
+      crawled_at DESC
+    LIMIT $2;
+  `;
+
+  const res = await db.query<{ id: number; url: string; title: string | null; page_text: string | null }>(
+    sql,
+    [pattern, limit]
+  );
+
+  return res.rows.map((row) => ({
+    id: Number(row.id),
+    url: row.url,
+    title: row.title || row.url,
+    snippet: generateSnippet(row.page_text, trimmed),
+  }));
+}
+
+/**
  * Closes the active database connection.
  */
 export async function closeDb(): Promise<void> {

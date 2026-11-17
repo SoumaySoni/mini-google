@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import { fetchWebpage, crawl } from "./crawler";
-import { initDb, savePage, getPages, getPageByUrl, getPageCount } from "./db";
+import { initDb, savePage, getPages, getPageByUrl, getPageCount, searchPages } from "./db";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -81,6 +81,40 @@ app.get("/api/pages/by-url", async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: error.message || "Failed to retrieve page",
+    });
+  }
+});
+
+/**
+ * Search Endpoint: Find pages whose title or page_text contains the query
+ * GET /api/search?q=<query>
+ */
+app.get("/api/search", async (req: Request, res: Response) => {
+  const rawQuery = req.query.q;
+
+  if (!rawQuery || typeof rawQuery !== "string" || !rawQuery.trim()) {
+    res.status(400).json({
+      success: false,
+      error: "Missing or empty query parameter 'q'",
+    });
+    return;
+  }
+
+  const query = rawQuery.trim();
+  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+
+  try {
+    const results = await searchPages(query, isNaN(limit) ? 50 : limit);
+    res.json({
+      success: true,
+      query,
+      total: results.length,
+      results,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to execute search",
     });
   }
 });
