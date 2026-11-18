@@ -13,6 +13,7 @@ import { extractLinks, extractText, normalizeUrl, normalizeUrls } from "./extrac
 import { UrlFrontier } from "./frontier";
 import { initDb, savePage, getPageCount } from "./db";
 import { saveCrawledPage } from "./page-repository";
+import { isUrlAllowed } from "./robots";
 
 export interface CrawlResult {
   url: string;
@@ -244,9 +245,16 @@ export async function crawl(
       continue;
     }
 
-    // Mark as visited/crawled
+    // Mark as visited/evaluated
     visited.add(currentUrl);
     frontier.markVisited(currentUrl);
+
+    // Check robots.txt permissions before fetching
+    const allowed = await isUrlAllowed(currentUrl, "MiniGoogleBot", options.timeoutMs ?? 5000);
+    if (!allowed) {
+      log(`Blocked by robots.txt:\n${currentUrl}`);
+      continue;
+    }
 
     pagesCrawled++;
     log(`Crawling: ${currentUrl}`);
@@ -377,6 +385,7 @@ export { extractLinks, extractText, normalizeUrl, normalizeUrls };
 export { UrlFrontier, UrlQueue } from "./frontier";
 export { initDb, savePage, getPages, getPageByUrl, getPageCount } from "./db";
 export { saveCrawledPage } from "./page-repository";
+export { isUrlAllowed } from "./robots";
 
 // CLI entry point: run directly with `npx tsx src/crawler.ts <url> <maxPages>`
 if (require.main === module) {

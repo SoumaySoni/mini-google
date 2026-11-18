@@ -289,7 +289,8 @@ export function generateSnippet(text: string | null | undefined, query: string, 
 }
 
 /**
- * Performs a basic database search across page titles and text content.
+ * Performs a PostgreSQL Full-Text Search (FTS) across page titles and text content,
+ * ranked by relevance using ts_rank.
  *
  * @param query - The user search string.
  * @param limit - Maximum number of matching pages to return (default: 50).
@@ -301,21 +302,26 @@ export async function searchPages(query: string, limit: number = 50): Promise<Se
   }
 
   const db = await getDb();
-  const pattern = `%${trimmed}%`;
 
   const sql = `
-    SELECT id, url, title, page_text
+    SELECT
+      id,
+      url,
+      title,
+      page_text,
+      ts_rank(
+        to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(page_text, '')),
+        plainto_tsquery('english', $1)
+      ) AS rank
     FROM pages
-    WHERE title ILIKE $1 OR page_text ILIKE $1
-    ORDER BY
-      CASE WHEN title ILIKE $1 THEN 1 ELSE 2 END,
-      crawled_at DESC
+    WHERE to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(page_text, '')) @@ plainto_tsquery('english', $1)
+    ORDER BY rank DESC, crawled_at DESC
     LIMIT $2;
   `;
 
   const res = await db.query<{ id: number; url: string; title: string | null; page_text: string | null }>(
     sql,
-    [pattern, limit]
+    [trimmed, limit]
   );
 
   return res.rows.map((row) => ({
