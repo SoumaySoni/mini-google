@@ -53,6 +53,8 @@ export interface FrontierStats {
 export interface CrawlOptions {
   timeoutMs?: number;
   delayMs?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
   silent?: boolean;
   onPageCrawled?: (page: CrawledPage, stats: FrontierStats) => void;
 }
@@ -111,13 +113,20 @@ export function isSameDomain(candidateUrl: string, baseDomainOrUrl: string): boo
 
 /**
  * Fetches a webpage given a URL and returns its HTML content, metadata, and extracted links.
+ * Automatically retries on network errors, timeouts, or HTTP 5xx server responses.
  *
  * @param targetUrl - The webpage URL to fetch (http or https)
  * @param timeoutMs - Request timeout in milliseconds (default: 10000ms)
+ * @param maxRetries - Maximum retry attempts upon failure (default: 3)
+ * @param retryDelayMs - Wait time in milliseconds between retries (default: 1000ms)
+ * @param logFn - Optional logging function (defaults to console.log)
  */
 export async function fetchWebpage(
   targetUrl: string,
-  timeoutMs: number = 10000
+  timeoutMs: number = 10000,
+  maxRetries: number = 3,
+  retryDelayMs: number = 1000,
+  logFn: (msg: string) => void = console.log
 ): Promise<CrawlResult> {
   // Validate and parse the URL
   let parsedUrl: URL;
@@ -130,57 +139,83 @@ export async function fetchWebpage(
     throw new Error(`Invalid URL: ${err.message}`);
   }
 
-  // Request the webpage with crawler headers and timeout
-  const response = await fetch(parsedUrl.toString(), {
-    method: "GET",
-    headers: {
-      "User-Agent": "MiniGoogleBot/1.0 (+http://localhost:3000/bot)",
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-    signal: AbortSignal.timeout(timeoutMs),
-    redirect: "follow",
-  });
+  let attempt = 0;
+  let lastError: Error | null = null;
 
-  const contentType = response.headers.get("content-type");
-  const html = await response.text();
-  const finalUrl = response.url || targetUrl;
-  const links = extractLinks(html, finalUrl);
-  const pageText = extractText(html);
+  while (attempt <= maxRetries) {
+    if (attempt > 0) {
+      logFn(`Retry ${attempt}/${maxRetries}`);
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
 
-  const $ = cheerio.load(html);
-  const rawTitle = $("title").first().text().trim();
-  const heading = $("h1, h2, h3").first().text().trim();
-  const title = rawTitle || heading || finalUrl;
+    try {
+      // Request the webpage with crawler headers and timeout
+      const response = await fetch(parsedUrl.toString(), {
+        method: "GET",
+        headers: {
+          "User-Agent": "MiniGoogleBot/1.0 (+http://localhost:3000/bot)",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+        redirect: "follow",
+      });
 
-  let snippet = $('meta[name="description"]').attr("content")?.trim() || "";
-  if (!snippet) {
-    $("p").each((_, el) => {
-      if (snippet) return;
-      const text = $(el).text().replace(/\s+/g, " ").trim();
-      if (text.length > 20) {
-        snippet = text;
+      // HTTP 5xx status codes indicate transient server errors that should trigger retry
+      if (response.status >= 500) {
+        throw new Error(`Server returned HTTP ${response.status}`);
       }
-    });
-  }
-  if (!snippet) {
-    snippet = $("body").text().replace(/\s+/g, " ").trim().slice(0, 160);
-  }
-  if (snippet.length > 200) {
-    snippet = snippet.slice(0, 197) + "...";
+
+      const contentType = response.headers.get("content-type");
+      const html = await response.text();
+      const finalUrl = response.url || targetUrl;
+      const links = extractLinks(html, finalUrl);
+      const pageText = extractText(html);
+
+      const $ = cheerio.load(html);
+      const rawTitle = $("title").first().text().trim();
+      const heading = $("h1, h2, h3").first().text().trim();
+      const title = rawTitle || heading || finalUrl;
+
+      let snippet = $('meta[name="description"]').attr("content")?.trim() || "";
+      if (!snippet) {
+        $("p").each((_, el) => {
+          if (snippet) return;
+          const text = $(el).text().replace(/\s+/g, " ").trim();
+          if (text.length > 20) {
+            snippet = text;
+          }
+        });
+      }
+      if (!snippet) {
+        snippet = $("body").text().replace(/\s+/g, " ").trim().slice(0, 160);
+      }
+      if (snippet.length > 200) {
+        snippet = snippet.slice(0, 197) + "...";
+      }
+
+      return {
+        url: finalUrl,
+        title,
+        snippet,
+        status: response.status,
+        contentType,
+        html,
+        pageText,
+        byteLength: Buffer.byteLength(html, "utf8"),
+        links,
+      };
+    } catch (err: any) {
+      lastError = err;
+      if (attempt === 0) {
+        logFn(`Fetch failed: ${targetUrl}`);
+      }
+      attempt++;
+    }
   }
 
-  return {
-    url: finalUrl,
-    title,
-    snippet,
-    status: response.status,
-    contentType,
-    html,
-    pageText,
-    byteLength: Buffer.byteLength(html, "utf8"),
-    links,
-  };
+  logFn(`Giving up: ${targetUrl}`);
+  throw lastError || new Error(`Failed to fetch ${targetUrl} after ${maxRetries} retries`);
 }
 
 /**
@@ -262,7 +297,13 @@ export async function crawl(
     let crawledPage: CrawledPage;
 
     try {
-      const result = await fetchWebpage(currentUrl, options.timeoutMs ?? 10000);
+      const result = await fetchWebpage(
+        currentUrl,
+        options.timeoutMs ?? 10000,
+        options.maxRetries ?? 3,
+        options.retryDelayMs ?? 1000,
+        log
+      );
 
       // Track redirected final URL as visited as well
       if (result.url && result.url !== currentUrl) {
